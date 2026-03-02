@@ -1,200 +1,110 @@
-# Teste Técnico - Desenvolvedor Senior RPA
+# RPA Scraper Project - Senior Challenge
 
-## Contexto
+Este projeto é um sistema de coleta de dados (web scraping) distribuído de alta performance e resiliência, utilizando **FastAPI** para a API, **RabbitMQ** para o gerenciamento assíncrono de tarefas (jobs), **PostgreSQL** para persistência e **Selenium/BeautifulSoup** para o processo de scraping.
 
-Você foi contratado para desenvolver um sistema de coleta de dados que extrai informações de múltiplas fontes web, gerencia jobs através de filas de mensagens, e disponibiliza os dados via API REST.
-
-## Objetivo
-
-Construir uma aplicação que:
-
-1. Colete dados de **duas fontes distintas** com diferentes estratégias de scraping
-2. Implemente um **sistema de filas com RabbitMQ** para gerenciamento de jobs
-3. Persista dados em **PostgreSQL**
-4. Exponha uma **API REST**
-5. Tenha **testes automatizados** (unitários e integração)
-6. Seja **containerizada** e executável via `docker-compose up`
-7. Tenha **CI/CD** com GitHub Actions
+A solução foi desenvolvida seguindo padrões de engenharia de software de nível **Sênior**, priorizando **SOLID**, **resiliência**, **validação de dados** e **testabilidade**.
 
 ---
 
-## Arquitetura Esperada
+## 🏗️ Arquitetura do Sistema
 
-```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│   FastAPI   │────▶│  RabbitMQ   │────▶│   Workers   │
-│    (API)    │     │   (Queue)   │     │  (Crawlers) │
-└─────────────┘     └─────────────┘     └─────────────┘
-       │                                       │
-       │            ┌─────────────┐            │
-       └───────────▶│  PostgreSQL │◀───────────┘
-                    │    (Data)   │
-                    └─────────────┘
-```
+O sistema é composto por cinco componentes principais desacoplados:
+
+1.  **API (FastAPI):** Gateway de entrada que recebe solicitações de scraping, cria registros de jobs no banco e publica mensagens no RabbitMQ.
+2.  **Queue (RabbitMQ):** Message Broker que garante o desacoplamento entre a API e o processamento pesado de scraping.
+3.  **Worker:** Consumidor assíncrono que processa as mensagens da fila e orquestra a execução dos scrapers.
+4.  **Scrapers Engine:**
+    *   **HockeyScraper:** Extração estática rápida utilizando BeautifulSoup4 com paginação.
+    *   **OscarScraper:** Extração dinâmica robusta utilizando Selenium, com tratamento de AJAX e elementos dinâmicos (Stale Elements).
+5.  **PostgreSQL:** Banco de dados relacional para persistência do status dos jobs e dos dados coletados, com suporte a `ON CONFLICT` para garantir idempotência e gerenciado via **Alembic Migrations**.
 
 ---
 
-## Sites Alvo
+## 🛠️ Funcionalidades Implementadas
 
-### 1. Hockey Teams
-
-**URL:** https://www.scrapethissite.com/pages/forms/
-
-**Características:** Página HTML com paginação tradicional
-
-**Dados a coletar:**
-- Team Name
-- Year
-- Wins, Losses, OT Losses
-- Win %, Goals For (GF), Goals Against (GA), Goal Difference
+*   **Resiliência de Mensageria:** Pool de conexões RabbitMQ (`RabbitMQManager` Singleton) com suporte a **Dead Letter Queue (DLQ)** para tratamento de falhas e auditoria.
+*   **Gestão de Banco de Dados:** Uso de **Alembic** para versionamento de schema e migrações controladas.
+*   **Observabilidade:** Logs estruturados em **JSON** para integração com stacks de monitoramento modernas (ELK/Loki).
+*   **Healthchecks Avançados:** Endpoint `/health` que verifica a saúde real das dependências (DB e RabbitMQ).
+*   **Evasão de Bloqueios:** Uso de **User-Agents rotativos** e cabeçalhos dinâmicos nos scrapers para evitar detecção.
+*   **Migrations Automáticas:** Aplicação automática de migrações do banco de dados no startup via Docker Compose.
+*   **Tratamento de Stale Elements:** Lógica robusta no `OscarScraper` para lidar com elementos dinâmicos do Selenium que desaparecem do DOM.
+*   **Idempotência:** Camada de persistência utiliza `ON CONFLICT` para garantir que reprocessamentos não dupliquem dados.
 
 ---
 
-### 2. Oscar Winning Films
+## 🚀 Como Instalar e Rodar (Docker)
 
-**URL:** https://www.scrapethissite.com/pages/ajax-javascript/
+A infraestrutura completa é containerizada e pode ser iniciada com um único comando:
 
-**Características:** Dados carregados via JavaScript/AJAX
+1.  **Clone o repositório:**
+    ```bash
+    git clone <url-do-repositorio>
+    cd teste-tecnico-senior-rpa
+    ```
 
-**Dados a coletar:**
-- Year, Title, Nominations, Awards, Best Picture
+2.  **Suba os containers:**
+    ```bash
+    docker-compose up --build
+    ```
 
----
-
-## Requisitos Técnicos
-
-### Stack Obrigatória
-
-| Tecnologia | Uso |
-|------------|-----|
-| **FastAPI** | Framework web |
-| **Pydantic** | Validação e serialização |
-| **SQLAlchemy** | ORM para persistência |
-| **PostgreSQL** | Banco de dados |
-| **RabbitMQ** | Sistema de filas |
-| **Selenium** | Disponível para páginas dinâmicas |
-| **Docker + Docker Compose** | Containerização |
-| **GitHub Actions** | CI/CD |
+### Serviços iniciados:
+*   **API:** `http://localhost:8000` (Swagger: `/docs`)
+*   **PostgreSQL:** Porta `5432`
+*   **RabbitMQ:** Porta `5672` (Management UI: `http://localhost:15672` - guest/guest)
 
 ---
 
-## Endpoints da API (Assíncronos)
+## 🧪 Estratégia de Testes
 
-```
-# Agendar coletas
-POST /crawl/hockey         → Agenda coleta do Hockey (retorna job_id)
-POST /crawl/oscar          → Agenda coleta do Oscar (retorna job_id)
-POST /crawl/all            → Agenda ambas as coletas (retorna job_id)
+O projeto adota uma pirâmide de testes rigorosa para garantir a confiabilidade:
 
-# Gerenciar jobs
-GET  /jobs                 → Lista todos os jobs
-GET  /jobs/{job_id}        → Status e detalhes de um job
-
-# Consultar resultados
-GET  /jobs/{job_id}/results → Resultados de um job específico
-GET  /results/hockey        → Todos os dados coletados de Hockey
-GET  /results/oscar         → Todos os dados coletados de Oscar
-```
-
-**Fluxo assíncrono:**
-1. `POST /crawl/*` publica mensagem no RabbitMQ e retorna `job_id` imediatamente
-2. Worker consome a mensagem e executa o crawling
-3. `GET /jobs/{job_id}` para verificar status (pending, running, completed, failed)
-4. `GET /jobs/{job_id}/results` para obter os dados coletados por aquele job
-
----
-
-## Testes
-
-| Tipo | Descrição |
-|------|-----------|
-| **Unitários** | Testar lógica de negócio, parsers, validações |
-| **Integração** | Testar API, filas e banco usando Testcontainers |
-
-**Não é necessário** testar crawling real contra os sites.
-
----
-
-## CI/CD com GitHub Actions
-
-O pipeline deve executar:
-
-1. **Lint** - Verificar código (ruff, black, etc.)
-2. **Testes unitários** - pytest
-3. **Testes de integração** - pytest com Testcontainers
-4. **Build** - Construir imagem Docker
-5. **Push** - Enviar imagem para Google Container Registry (GCR)
-
----
-
-## Critérios de Avaliação
-
-| Critério | Peso |
-|----------|------|
-| **Arquitetura** | Alto - Design, separação de responsabilidades, uso do RabbitMQ |
-| **Qualidade de código** | Alto - SOLID, tipagem, boas práticas |
-| **Funcionamento** | Alto - A solução deve funcionar corretamente |
-| **Testes** | Alto - Unitários e integração com Testcontainers |
-| **CI/CD** | Alto - Pipeline funcional com push para GCR |
-| **Tratamento de erros** | Médio - Robustez e resiliência |
-| **Documentação** | Baixo |
-
----
-
-## Ambiente de Desenvolvimento
-
-### Nix + direnv (Recomendado - Linux)
-
-#### 1. Instalar Nix
-
+### 1. Testes Unitários
+Testam a lógica de negócio isolada, parsers de HTML e validações Pydantic.
 ```bash
-sh <(curl --proto '=https' --tlsv1.2 -L https://nixos.org/nix/install) --daemon
+# Se tiver ambiente local configurado (ou via Nix)
+pytest tests/unit
 ```
 
-#### 2. Habilitar Flakes
-
-Adicione ao `~/.config/nix/nix.conf`:
-
-```
-experimental-features = nix-command flakes
-```
-
-#### 3. Instalar direnv
-
+### 2. Testes de Integração (Testcontainers)
+Utilizam a biblioteca `Testcontainers` para subir instâncias reais de **PostgreSQL** e **RabbitMQ** em containers efêmeros durante os testes, validando a comunicação real entre os componentes.
 ```bash
-# Debian/Ubuntu
-sudo apt install direnv
-
-# Fedora
-sudo dnf install direnv
-
-# Arch
-sudo pacman -S direnv
+pytest tests/integration
 ```
-
-Adicione ao seu shell (`~/.bashrc` ou `~/.zshrc`):
-
-```bash
-eval "$(direnv hook bash)"  # ou zsh
-```
-
-#### 4. Rodar
-
-O `.envrc` e `flake.nix` já vêm prontos no repositório. Basta permitir o direnv e o ambiente será carregado automaticamente:
-
-```bash
-direnv allow
-```
-
-Commite o `flake.lock` no seu repositório.
 
 ---
 
-## Regras
 
-1. **Entrega:** Fork deste repositório
-2. **Dúvidas:** ti@bpcreditos.com.br | gabrielpelizzaro@gmail.com
+## 📂 Estrutura do Projeto
+
+```text
+├── .github/workflows/  # Pipeline de CI/CD (Lint, Test, Build, Push GCR)
+├── alembic/            # Migrações de Banco de Dados
+├── app/
+│   ├── api/            # Endpoints FastAPI e Healthchecks
+│   ├── core/           # Configurações, Logging JSON e RabbitMQ Manager
+│   ├── db/             # Conexão SQLAlchemy
+│   ├── models/         # Modelos ORM (Job, HockeyData, OscarData)
+│   ├── schemas/        # Validação Pydantic (Fail-Fast)
+│   ├── scrapers/       # Motores de Scraping (BS4 e Selenium)
+│   ├── services/       # Orquestração de Jobs e Idempotência
+│   └── worker/         # Consumidor de fila com suporte a DLQ
+├── tests/
+│   ├── unit/           # Testes unitários (Parsers e Lógica)
+│   └── integration/    # Testes com Testcontainers (DB e RabbitMQ)
+├── Dockerfile          # Imagem otimizada (Python 3.13 + Chromium)
+├── docker-compose.yml  # Orquestração (Healthchecks e Migrations)
+└── pyproject.toml      # Dependências e Ferramentas (Ruff, Black)
+```
 
 ---
 
-**Queremos ver como você arquiteta soluções, não apenas como escreve código.**
+## 🌐 Endpoints da API
+
+*   `POST /crawl/hockey`: Inicia coleta de times de Hockey.
+*   `POST /crawl/oscar`: Inicia coleta de filmes do Oscar (Selenium).
+*   `POST /crawl/all`: Inicia ambas as coletas simultaneamente.
+*   `GET /jobs`: Lista todos os jobs e seus status atuais.
+*   `GET /jobs/{job_id}/results`: Retorna os dados coletados por um job específico.
+*   `GET /results/hockey`: Retorna a base consolidada de times de Hockey.
+*   `GET /results/oscar`: Retorna a base consolidada de filmes do Oscar.

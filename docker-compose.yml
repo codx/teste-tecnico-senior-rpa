@@ -1,0 +1,63 @@
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: rpa_db
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U user -d rpa_db" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:4.2-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: [ "CMD-SHELL", "rabbitmq-diagnostics -q check_running" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: sh -c "python -m alembic upgrade head && uvicorn app.api.main:app --host 0.0.0.0 --port 8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    environment:
+      DATABASE_URL: postgresql://user:password@db:5432/rpa_db
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: python app/worker/main.py
+    environment:
+      DATABASE_URL: postgresql://user:password@db:5432/rpa_db
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      CHROME_EXECUTABLE_PATH: /usr/bin/chromium
+      CHROMEDRIVER_PATH: /usr/bin/chromedriver
+      HOCKEY_MAX_PAGES: 10
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy

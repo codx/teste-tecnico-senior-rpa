@@ -1,0 +1,53 @@
+[project]
+name = "teste-tecnico-senior-rpa"
+version = "0.1.0"
+description = "Sistema de coleta de dados com FastAPI, RabbitMQ e Scrapers"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi (>=0.135.1,<0.136.0)",
+    "uvicorn (>=0.41.0,<0.42.0)",
+    "pydantic (>=2.12.5,<3.0.0)",
+    "sqlalchemy (>=2.0.47,<3.0.0)",
+    "alembic (>=1.18.4,<2.0.0)",
+    "selenium (>=4.41.0,<5.0.0)",
+    "requests (>=2.32.5,<3.0.0)",
+    "beautifulsoup4 (>=4.14.3,<5.0.0)",
+    "webdriver-manager (>=4.0.2,<5.0.0)",
+    "pydantic-settings (>=2.13.1,<3.0.0)",
+    "tenacity (>=9.1.4,<10.0.0)",
+    "python-json-logger (>=4.0.0,<5.0.0)",
+    "pika (>=1.3.2,<2.0.0)",
+    "psycopg2-binary (>=2.9.11,<3.0.0)"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "httpx",
+    "testcontainers[rabbitmq,postgresql]",
+    "ruff",
+    "black",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = []
+
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+
+[tool.black]
+line-length = 88
+target-version = ['py313']
+
+[tool.poetry]
+package-mode = false
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
